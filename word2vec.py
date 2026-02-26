@@ -20,7 +20,9 @@ def build_vocab(tokens: list[str], min_count: int = 5):
     word2idx = {w: i for i, w in enumerate(vocab)} # Assign a unique index to each word in the vocabulary
     idx2word = {i: w for w, i in word2idx.items()} # Create a reverse mapping from indices back to words
 
-    freqs = np.array([counts[w] ** 0.75 for w in vocab], dtype=np.float64)
+    # Raise word frequencies to the 0.75 power to artificially increase the probability of sampling rare words as negatives
+    freqs = np.array([counts[w] ** 0.75 for w in vocab], dtype=np.float64) 
+    # Normalize the adjusted frequencies so they sum to 1, creating a valid probability distribution
     neg_sampling_probs = freqs / freqs.sum() 
 
     return word2idx, idx2word, neg_sampling_probs
@@ -32,8 +34,8 @@ def build_pairs(tokens: list[str], word2idx: dict, window: int = 5):
     pairs = []
     for i, center in enumerate(indexed):
         radius = np.random.randint(1, window + 1) # Randomly choose a window size for each center word
-        start = max(0, i - radius) #
-        end = min(len(indexed), i + radius + 1) 
+        start = max(0, i - radius) # Define the lower bound of the context window
+        end = min(len(indexed), i + radius + 1) # Define the upper bound of the context window
         for j in range(start, end):
             if j != i:
                 pairs.append((center, indexed[j])) # Append the (center, context) pair to the list of pairs
@@ -48,7 +50,7 @@ class SkipGramNS:
     # Initialize the model with random embeddings for both center and context words.
     def __init__(self, vocab_size: int, embed_dim: int, seed: int = 42):
         rng = np.random.default_rng(seed) # Create a random number generator with the specified seed for reproducibility
-        # Initialize randomly the weight matrices for center and context embeddings with a uniform distribution centered around 0 and having the extremes in 0.5/embed_dim and -0.5/embed_dim
+        # Randomly initialize center and context weight matrices with a uniform distribution over [-0.5/embed_dim, 0.5/embed_dim]
         self.W  = rng.uniform(-0.5 / embed_dim, 0.5 / embed_dim, (vocab_size, embed_dim))   # center embeddings
         self.Wp = rng.uniform(-0.5 / embed_dim, 0.5 / embed_dim, (vocab_size, embed_dim))   # context embeddings
 
@@ -133,7 +135,7 @@ def train(corpus_path: str,
           min_count:   int   = 5,
           seed:        int   = 42):
 
-    np.random.seed(seed) # Set the random seed for all the random operations for reproducibility of results across runs.
+    np.random.seed(seed) # Set the random seed for reproducibility of results across runs.
 
     # -- Data --
     print("Loading and tokenizing corpus …")
@@ -175,6 +177,7 @@ def train(corpus_path: str,
             
             # K negative word IDs sampled from neg_probs
             neg_indices = np.random.choice(V, size=num_neg, p=neg_probs, replace=True) 
+            # Shift accidental positive samples to the next vocabulary index to prevent false penalization
             neg_indices[neg_indices == context_idx] = ((neg_indices[neg_indices == context_idx] + 1) % V)
 
             loss = model.update(center_idx, context_idx, neg_indices, current_lr) # Update the model parameters 
